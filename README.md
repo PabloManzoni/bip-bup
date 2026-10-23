@@ -8,7 +8,7 @@ It plays once per request, the first time any of these happens:
 - 2 or more subagents are launched, or a workflow starts,
 - token usage crosses a threshold (weighted roughly by price: cached context reads count little, and what Claude writes counts a lot).
 
-It also shows a toast saying why it went off. The thresholds are at the top of `hooks/register.ts`.
+It also shows a short "🤖 computing..." toast. The thresholds are at the top of `hooks/register.ts`.
 
 The mod itself uses no tokens: it never calls the model and only reads the usage numbers every response already carries.
 

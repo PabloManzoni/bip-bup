@@ -18,10 +18,10 @@ type Turn = {
 
 let turn: Turn | undefined
 
-function beep($: EngineInterface, why: string) {
+function beep($: EngineInterface) {
   if (turn === undefined || turn.hasBeeped) return
   turn.hasBeeped = true
-  $.ui.toast(`🤖 bip bup bip… ${why}`, { timeoutMs: 8000 })
+  $.ui.toast('🤖 computing...', { timeoutMs: 8000 })
   $.audio.play({ asset: SOUND }).catch(() => {})
 }
 
@@ -31,7 +31,7 @@ export const register: Register = on => {
       if (turn === undefined || turn.hasBeeped) return
       const elapsed = (await $.clock.now()) - turn.startedAt
       if (elapsed >= LONG_TURN_MS) {
-        beep($, `still going after ${Math.round(elapsed / 1000)}s`)
+        beep($)
       }
     })
 
@@ -49,10 +49,8 @@ export const register: Register = on => {
   on('agent.spawn', ($, e, next) => {
     if (turn !== undefined) {
       turn.agents += 1
-      if (e.workflow !== undefined) {
-        beep($, 'a multi-agent workflow started')
-      } else if (turn.agents >= MANY_AGENTS) {
-        beep($, `${turn.agents} subagents at work`)
+      if (e.workflow !== undefined || turn.agents >= MANY_AGENTS) {
+        beep($)
       }
     }
 
@@ -67,7 +65,7 @@ export const register: Register = on => {
       turn.tokens +=
         u.input_tokens + u.cache_creation_input_tokens * 1.25 + u.cache_read_input_tokens * 0.1 + u.output_tokens * 5
       if (turn.tokens >= HEAVY_TOKENS) {
-        beep($, 'this is burning through a lot of tokens')
+        beep($)
       }
     }
 
