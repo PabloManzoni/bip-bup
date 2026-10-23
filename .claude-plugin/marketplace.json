@@ -1,0 +1,5 @@
+{
+  "name": "bip-bup",
+  "owner": { "name": "PabloManzoni" },
+  "plugins": [{ "name": "bip-bup", "source": "./" }]
+}
