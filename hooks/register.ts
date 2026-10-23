@@ -31,7 +31,7 @@ export const register: Register = on => {
       if (turn === undefined || turn.hasBeeped) return
       const elapsed = (await $.clock.now()) - turn.startedAt
       if (elapsed >= LONG_TURN_MS) {
-        beep($, `lleva ${Math.round(elapsed / 1000)}s y sigue`)
+        beep($, `still going after ${Math.round(elapsed / 1000)}s`)
       }
     })
 
@@ -50,9 +50,9 @@ export const register: Register = on => {
     if (turn !== undefined) {
       turn.agents += 1
       if (e.workflow !== undefined) {
-        beep($, 'arrancó un workflow de varios agentes')
+        beep($, 'a multi-agent workflow started')
       } else if (turn.agents >= MANY_AGENTS) {
-        beep($, `${turn.agents} subagentes trabajando`)
+        beep($, `${turn.agents} subagents at work`)
       }
     }
 
@@ -67,7 +67,7 @@ export const register: Register = on => {
       turn.tokens +=
         u.input_tokens + u.cache_creation_input_tokens * 1.25 + u.cache_read_input_tokens * 0.1 + u.output_tokens * 5
       if (turn.tokens >= HEAVY_TOKENS) {
-        beep($, 'esto está consumiendo muchos tokens')
+        beep($, 'this is burning through a lot of tokens')
       }
     }
 
