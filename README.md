@@ -1,27 +1,27 @@
 # bip-bup 🤖
 
-A Claude Code mod that plays a quick burst of high "bip bup bip" blips, like a cartoon computer thinking, when a request turns out bigger than it looked: long, agent-heavy or token-heavy. So you're not caught off guard when something you thought was quick ends up taking half an hour or burning a lot of tokens.
+A Claude Code mod that goes "beep bop boop", like a cartoon computer thinking, when a request turns out bigger than it looked: long, agent-heavy or token-heavy. So you're not caught off guard when something you thought was quick ends up taking half an hour or burning a lot of tokens.
 
 ## When it plays
 
-Once per request, the first time any of these happens:
+Once per request, and only for requests that are really big. Nothing plays in the first 20 seconds: a quick answer never beeps. A rule that fires earlier is held, and plays at 20 s only if the request is still running.
 
 | Rule | Default | What counts |
 | --- | --- | --- |
-| Taking a while | 90 s | Time the request has been running. Time spent waiting on you (a question, a plan to approve, a permission dialog) is not counted. |
-| Agents at work | 2 | Subagents started by the request. A workflow counts at once, since it always runs several. |
-| So many tokens | 75,000 | Weighted tokens of *new work* done by the request: uncached input, cache writes (×1.25) and output (×5). Steps run by a cheaper model weigh less (Haiku ×0.25, Sonnet ×0.6). |
+| Taking a while | 120 s | Time the request has been running. Time spent waiting on you (a question, a plan to approve) is not counted. |
+| Agents at work | 3 | Subagents started by the request. A workflow counts at once, since it always runs several. |
+| So many tokens | 20,000 | Tokens Claude *writes* during the request, its subagents included. Output from a cheaper model weighs less (Haiku ×0.25, Sonnet ×0.6). |
+| Big job | 40 | Model steps in the request, roughly one per tool call. |
 
-The toast says which rule fired: "🤖 Computing... taking a while", "agents at work" or "so many tokens".
+The toast says which rule fired: "🤖 Computing... taking a while", "agents at work", "so many tokens" or "big job".
 
-The thresholds, the volume and whether the sound plays at all are settings: Claude Code asks for them when you install the mod, and they're rows in its config menu (`/config` in a terminal session) afterwards. The sound is recorded quiet on purpose; **Volume** goes from 0 to 400 % of that.
+The thresholds, the volume and whether the sound plays at all are settings: Claude Code asks for them when you install the mod, and they're rows in its config menu (`/config` in a terminal session) afterwards. **Volume** goes from 0 to 400 % of the recorded level.
 
 ## How it measures
 
-- **Cache re-reads are left out on purpose.** Every model step re-reads the whole conversation from cache. That cost grows with the *session*, not with the *request*, so counting it makes the alert fire on almost every request once a session is long, and an alert that always fires says nothing. The token rule only counts what the request itself added.
+- **Only what Claude writes counts as tokens.** Input and cache tokens grow with the *session*, not with the request: a new session's first answer writes all of Claude's instructions to the cache, and a long session resumed after a pause writes its whole conversation again. Counting them made the alert fire on simple answers.
 - **Background subagents left over from an earlier request** keep running after it ends. Their tokens are not charged to the next request.
-- **Waiting on you doesn't count as time**, with one limit: once a permission dialog opens for a tool, the clock stays paused until that tool call ends, because the engine gives no signal for the moment you answer. So a long command that first needed your permission is not counted against the time rule. And in the desktop app a built-in security plugin answers permission events before any mod sees them, so there only questions and plan approvals pause the clock.
-- The weights are rough. They stand for price ratios, and real prices differ by model and change over time.
+- **Waiting on you doesn't count as time** when Claude asks you a question or a plan to approve. In a terminal session a permission dialog pauses the clock too, until that tool call ends. In the desktop app a built-in security plugin answers permission events before any mod sees them, so there only questions and plans pause it.
 
 The mod itself uses no tokens: it never calls the model and only reads the usage numbers every response already carries.
 
@@ -48,7 +48,7 @@ In the desktop app, where `/plugin` doesn't run: click **+** next to the prompt 
 ## Development
 
 - `hooks/register.ts` is the whole mod. Validate it with `claude plugin validate .` from the repo root.
-- `scripts/make_sound.py` synthesizes the sound: sixteen quick blips at random high pitches and a two-note ding, soft square-wave tones, about 1.5 s. Tweak it, then run `python3 scripts/make_sound.py sounds/computing.wav`.
+- `scripts/make_sound.py` synthesizes the sound: three soft tones, about 0.75 s. Tweak it, then run `python3 scripts/make_sound.py sounds/computing.wav`.
 - Once the mod has loaded in a session, Claude Code writes its type declarations to `.claude-plugin/types/` and a `tsconfig.json` beside them (both git-ignored). From then on `tsc -p .` type-checks it.
 
 ## License

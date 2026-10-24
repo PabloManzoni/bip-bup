@@ -1,30 +1,44 @@
 {
   "name": "bip-bup",
-  "version": "0.2.1",
-  "description": "Plays a quick, quiet burst of robot blips when a request turns out long, agent-heavy or token-heavy.",
-  "author": { "name": "Pablo Manzoni", "url": "https://github.com/PabloManzoni" },
+  "version": "0.3.0",
+  "description": "Plays a soft robot 'beep bop boop' when a request turns out long, agent-heavy or token-heavy.",
+  "author": {
+    "name": "Pablo Manzoni",
+    "url": "https://github.com/PabloManzoni"
+  },
   "homepage": "https://github.com/PabloManzoni/bip-bup",
   "repository": "https://github.com/PabloManzoni/bip-bup",
   "license": "MIT",
-  "keywords": ["sound", "notification", "tokens", "subagents"],
+  "keywords": [
+    "sound",
+    "notification",
+    "tokens",
+    "subagents"
+  ],
   "userConfig": {
     "longSeconds": {
       "type": "number",
       "title": "Seconds before 'taking a while'",
       "description": "Seconds a request may run, not counting time spent waiting on you, before the sound plays",
-      "default": 90
+      "default": 120
     },
     "agents": {
       "type": "number",
       "title": "Subagents before 'agents at work'",
       "description": "Subagents started by one request that play the sound",
-      "default": 2
+      "default": 3
     },
-    "workTokens": {
+    "outputTokens": {
       "type": "number",
       "title": "Tokens before 'so many tokens'",
-      "description": "Weighted tokens of new work in one request that play the sound",
-      "default": 75000
+      "description": "Tokens Claude writes in one request, its subagents included, that play the sound",
+      "default": 20000
+    },
+    "steps": {
+      "type": "number",
+      "title": "Steps before 'big job'",
+      "description": "Model steps (roughly, tool calls) in one request that play the sound",
+      "default": 40
     },
     "sound": {
       "type": "boolean",

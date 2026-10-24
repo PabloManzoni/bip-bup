@@ -1,33 +1,36 @@
-"""Synthesizes the mod's sound: a quick burst of high blips, a cartoon computer thinking, closed by a two-note ding.
+"""Synthesizes the mod's sound: a soft, short "beep bop boop" of a cartoon computer thinking.
 
 Usage: python3 scripts/make_sound.py sounds/computing.wav
-Soft square-wave tones (the first odd harmonics only), about 1.5 s, recorded quiet:
-the mod's Volume setting scales it up to 4x from there.
+Pure sine tones with a hint of harmonics, gentle fades, low volume, ~0.75 s in all.
 """
 import math
-import random
 import struct
 import sys
 import wave
 
 RATE = 44100
-VOLUME = 0.08
-random.seed(7)
+VOLUME = 0.15
 
-# A pentatonic-ish set, so the random blips sound like a musical robot rather than noise.
-PITCHES = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760]
+# (frequency in Hz, length in ms): beep, bop, boop. The last one lands lower and longer.
+NOTES = [(659, 130), (523, 130), (392, 190)]
+GAP_MS = 60
 
 
-def blip(freq, ms, vol=VOLUME):
+def tone(freq, ms):
     n = int(RATE * ms / 1000)
+    attack = int(RATE * 0.010)
+    release = int(RATE * 0.045)
     out = []
     for i in range(n):
         t = i / RATE
-        # Soft square: the first odd harmonics only, so it beeps without being harsh.
-        s = sum(math.sin(2 * math.pi * freq * k * t) / k for k in (1, 3, 5)) * 0.8
-        attack = min(1.0, i / (RATE * 0.004))
-        release = min(1.0, (n - i) / (RATE * 0.012))
-        out.append(s * vol * attack * release)
+        # A sine with a touch of the 2nd and 3rd harmonics: warm, a little "digital", never harsh.
+        s = math.sin(2 * math.pi * freq * t) + 0.12 * math.sin(4 * math.pi * freq * t) + 0.04 * math.sin(6 * math.pi * freq * t)
+        env = 1.0
+        if i < attack:
+            env = 0.5 - 0.5 * math.cos(math.pi * i / attack)
+        elif n - i < release:
+            env = 0.5 - 0.5 * math.cos(math.pi * (n - i) / release)
+        out.append(s * VOLUME * env)
     return out
 
 
@@ -36,12 +39,11 @@ def silence(ms):
 
 
 samples = silence(40)
-# The burst: sixteen quick blips at random pitches and lengths.
-for _ in range(16):
-    samples += blip(random.choice(PITCHES), random.choice([45, 55, 70])) + silence(18)
-samples += silence(60)
-# The ding that closes it.
-samples += blip(1568, 90) + silence(40) + blip(2093, 160, vol=VOLUME * 0.78)
+for index, (freq, ms) in enumerate(NOTES):
+    if index:
+        samples += silence(GAP_MS)
+    samples += tone(freq, ms)
+samples += silence(120)
 
 with wave.open(sys.argv[1], "wb") as w:
     w.setnchannels(1)

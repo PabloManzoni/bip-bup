@@ -1,12 +1,13 @@
-import type { EngineInterface, PluginOptions, Register, Timer, TurnUsage } from 'claude-code'
+import type { EngineInterface, PluginOptions, Register, Timer } from 'claude-code'
 
 // Defaults for the settings `plugin.json` declares under `userConfig`.
-const DEFAULTS = { longSeconds: 90, agents: 2, workTokens: 75_000 }
+const DEFAULTS = { longSeconds: 120, agents: 3, outputTokens: 20_000, steps: 40 }
 
-// Rough price weights, relative to uncached input of the same model.
-const CACHE_WRITE_WEIGHT = 1.25
-const OUTPUT_WEIGHT = 5
-// Steps answered by a cheaper model tier count for less; any other model counts in full.
+// Nothing plays before a request has run this long: a quick answer never beeps,
+// whatever its first steps looked like.
+const QUIET_MS = 20_000
+
+// Output from a cheaper model tier counts for less; any other model counts in full.
 const MODEL_WEIGHTS: ReadonlyArray<readonly [RegExp, number]> = [
   [/haiku/i, 0.25],
   [/sonnet/i, 0.6],
@@ -17,7 +18,7 @@ const WAITS_ON_PERSON = new Set(['AskUserQuestion', 'ExitPlanMode'])
 
 const SOUND = 'sounds/computing.wav'
 
-type Settings = { longMs: number; agents: number; workTokens: number; sound: boolean; gain: number }
+type Settings = { longMs: number; agents: number; outputTokens: number; steps: number; sound: boolean; gain: number }
 
 type Turn = {
   id: string
@@ -28,8 +29,12 @@ type Turn = {
   // The tools the person is being asked about right now, by name.
   waits: Set<string>
   timer?: Timer
+  // A rule that fired inside the quiet window, held until the window ends.
+  held?: string
+  holdTimer?: Timer
   agents: number
-  work: number
+  steps: number
+  output: number
   hasBeeped: boolean
 }
 
@@ -51,20 +56,49 @@ function readSettings(options: PluginOptions): Settings {
   return {
     longMs: number('longSeconds') * 1000,
     agents: number('agents'),
-    workTokens: number('workTokens'),
+    outputTokens: number('outputTokens'),
+    steps: number('steps'),
     sound: options.sound !== false,
     gain: Number.isFinite(volume) ? Math.min(Math.max(volume, 0), 400) / 100 : 1,
   }
 }
 
-function beep($: EngineInterface, why: string) {
-  if (turn === undefined || turn.hasBeeped) return
-  turn.hasBeeped = true
-  turn.timer?.cancel()
+// How long the request has run, not counting time spent waiting on the person.
+function activeMs(t: Turn, now: number) {
+  return now - t.startedAt - t.pausedMs - (t.pausedSince === undefined ? 0 : now - t.pausedSince)
+}
+
+function stop(t: Turn) {
+  t.timer?.cancel()
+  t.holdTimer?.cancel()
+}
+
+function beep($: EngineInterface, t: Turn, why: string) {
+  t.hasBeeped = true
+  stop(t)
   $.ui.toast(`🤖 Computing... ${why}`, { timeoutMs: 8000 })
   if (settings.sound) {
     $.audio.play({ asset: SOUND }, { gain: settings.gain }).catch(() => {})
   }
+}
+
+// A rule fired: beep, or, inside the quiet window, hold it until the window
+// ends and beep then only if the request is still running.
+async function signal($: EngineInterface, why: string) {
+  const t = turn
+  if (t === undefined || t.hasBeeped) return
+  const now = await $.clock.now()
+  if (turn !== t || t.hasBeeped) return
+  const wait = QUIET_MS - activeMs(t, now)
+  if (wait <= 0) {
+    beep($, t, why)
+    return
+  }
+  t.held ??= why
+  t.holdTimer ??= $.clock.after(wait, () => {
+    t.holdTimer = undefined
+    if (turn === t && t.held !== undefined) void signal($, t.held)
+  })
 }
 
 // Arms the "taking a while" timer for what is left of the limit, counting only
@@ -73,8 +107,7 @@ function arm($: EngineInterface, now: number) {
   const t = turn
   if (t === undefined || t.hasBeeped || t.pausedSince !== undefined) return
   t.timer?.cancel()
-  const remaining = settings.longMs - (now - t.startedAt - t.pausedMs)
-  t.timer = $.clock.after(Math.max(remaining, 0), () => beep($, 'taking a while'))
+  t.timer = $.clock.after(Math.max(settings.longMs - activeMs(t, now), 0), () => void signal($, 'taking a while'))
 }
 
 async function pause($: EngineInterface, tool: string) {
@@ -99,15 +132,6 @@ async function resume($: EngineInterface, tool: string) {
   arm($, now)
 }
 
-// What a model step cost in new work: what it read for the first time, wrote
-// to the cache and answered. Cache re-reads are left out on purpose: they grow
-// with the session, not with the request.
-function workOf(usage: TurnUsage) {
-  const weight = MODEL_WEIGHTS.find(([model]) => model.test(usage.model))?.[1] ?? 1
-
-  return weight * (usage.input_tokens + CACHE_WRITE_WEIGHT * usage.cache_creation_input_tokens + OUTPUT_WEIGHT * usage.output_tokens)
-}
-
 export const register: Register = (on, options) => {
   settings = readSettings(options)
 
@@ -119,9 +143,9 @@ export const register: Register = (on, options) => {
       return next(e)
     }
 
-    turn?.timer?.cancel()
+    if (turn !== undefined) stop(turn)
     const now = await $.clock.now()
-    turn = { id: e.turnId, startedAt: now, pausedMs: 0, waits: new Set(), agents: 0, work: 0, hasBeeped: false }
+    turn = { id: e.turnId, startedAt: now, pausedMs: 0, waits: new Set(), agents: 0, steps: 0, output: 0, hasBeeped: false }
     arm($, now)
 
     return next(e)
@@ -131,7 +155,7 @@ export const register: Register = (on, options) => {
     if (e.agentId !== undefined) {
       agentTurn.delete(e.agentId)
     } else if (turn?.id === e.turnId) {
-      turn.timer?.cancel()
+      stop(turn)
       turn = undefined
     }
 
@@ -142,7 +166,7 @@ export const register: Register = (on, options) => {
     if (turn !== undefined) {
       turn.agents += 1
       if (e.workflow !== undefined || turn.agents >= settings.agents) {
-        beep($, 'agents at work')
+        void signal($, 'agents at work')
       }
     }
 
@@ -152,16 +176,25 @@ export const register: Register = (on, options) => {
     return spawned
   })
 
-  // Every model request, the main loop's or a subagent's, adds its new work to the request it works for.
+  // Each model request adds to the request it works for: the main loop's count
+  // as steps, and every one's output counts as tokens. Input and cache writes
+  // are left out: a new session's first answer writes all of Claude's
+  // instructions to the cache, and a session resumed after a pause writes its
+  // whole conversation again, so they grow with the session, not the request.
   on('turn.step', async function* ($, e, next) {
     const result = yield* next(e)
     const t = turn
     const isOwned = e.agentId === undefined || agentTurn.get(e.agentId) === t?.id
-    if (t !== undefined && result.usage !== null && isOwned) {
-      t.work += workOf(result.usage)
-      if (t.work >= settings.workTokens) {
-        beep($, 'so many tokens')
-      }
+    if (t === undefined || !isOwned) return result
+
+    if (e.agentId === undefined) {
+      t.steps += 1
+      if (t.steps >= settings.steps) void signal($, 'big job')
+    }
+    if (result.usage !== null) {
+      const weight = MODEL_WEIGHTS.find(([model]) => model.test(result.usage?.model ?? ''))?.[1] ?? 1
+      t.output += weight * result.usage.output_tokens
+      if (t.output >= settings.outputTokens) void signal($, 'so many tokens')
     }
 
     return result
