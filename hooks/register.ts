@@ -2,6 +2,8 @@ import type { EngineInterface, PluginOptions, Register, Timer } from 'claude-cod
 
 // Defaults for the settings `plugin.json` declares under `userConfig`.
 const DEFAULTS = { longSeconds: 120, agents: 3, outputTokens: 20_000, steps: 40 }
+// A second, separate reminder for a request still running after this many minutes; 0 turns it off.
+const DEFAULT_STILL_MINUTES = 25
 
 // Nothing plays before a request has run this long: a quick answer never beeps,
 // whatever its first steps looked like.
@@ -18,7 +20,15 @@ const WAITS_ON_PERSON = new Set(['AskUserQuestion', 'ExitPlanMode'])
 
 const SOUND = 'sounds/computing.wav'
 
-type Settings = { longMs: number; agents: number; outputTokens: number; steps: number; sound: boolean; gain: number }
+type Settings = {
+  longMs: number
+  stillMs: number
+  agents: number
+  outputTokens: number
+  steps: number
+  sound: boolean
+  gain: number
+}
 
 type Turn = {
   id: string
@@ -29,6 +39,8 @@ type Turn = {
   // The tools the person is being asked about right now, by name.
   waits: Set<string>
   timer?: Timer
+  stillTimer?: Timer
+  hasRemindedStill: boolean
   // A rule that fired inside the quiet window, held until the window ends.
   held?: string
   holdTimer?: Timer
@@ -52,9 +64,11 @@ function readSettings(options: PluginOptions): Settings {
 
   // Volume is a percent of the recorded level, 0 to 400; the player takes a linear gain of 0 to 4.
   const volume = Number(options.volume)
+  const still = Number(options.stillMinutes)
 
   return {
     longMs: number('longSeconds') * 1000,
+    stillMs: (Number.isFinite(still) && still >= 0 ? still : DEFAULT_STILL_MINUTES) * 60_000,
     agents: number('agents'),
     outputTokens: number('outputTokens'),
     steps: number('steps'),
@@ -71,15 +85,21 @@ function activeMs(t: Turn, now: number) {
 function stop(t: Turn) {
   t.timer?.cancel()
   t.holdTimer?.cancel()
+  t.stillTimer?.cancel()
 }
 
-function beep($: EngineInterface, t: Turn, why: string) {
-  t.hasBeeped = true
-  stop(t)
+function play($: EngineInterface, why: string) {
   $.ui.toast(`🤖 Computing... ${why}`, { timeoutMs: 8000 })
   if (settings.sound) {
     $.audio.play({ asset: SOUND }, { gain: settings.gain }).catch(() => {})
   }
+}
+
+function beep($: EngineInterface, t: Turn, why: string) {
+  t.hasBeeped = true
+  t.timer?.cancel()
+  t.holdTimer?.cancel()
+  play($, why)
 }
 
 // A rule fired: beep, or, inside the quiet window, hold it until the window
@@ -101,13 +121,24 @@ async function signal($: EngineInterface, why: string) {
   })
 }
 
-// Arms the "taking a while" timer for what is left of the limit, counting only
-// the time not spent waiting on the person.
+// Arms the "taking a while" timer and the "still going" reminder for what is
+// left of each limit, counting only the time not spent waiting on the person.
 function arm($: EngineInterface, now: number) {
   const t = turn
-  if (t === undefined || t.hasBeeped || t.pausedSince !== undefined) return
-  t.timer?.cancel()
-  t.timer = $.clock.after(Math.max(settings.longMs - activeMs(t, now), 0), () => void signal($, 'taking a while'))
+  if (t === undefined || t.pausedSince !== undefined) return
+  const active = activeMs(t, now)
+  if (!t.hasBeeped) {
+    t.timer?.cancel()
+    t.timer = $.clock.after(Math.max(settings.longMs - active, 0), () => void signal($, 'taking a while'))
+  }
+  if (!t.hasRemindedStill && settings.stillMs > 0) {
+    t.stillTimer?.cancel()
+    t.stillTimer = $.clock.after(Math.max(settings.stillMs - active, 0), () => {
+      if (turn !== t) return
+      t.hasRemindedStill = true
+      play($, `still going (${Math.round(settings.stillMs / 60_000)} min)`)
+    })
+  }
 }
 
 async function pause($: EngineInterface, tool: string) {
@@ -120,6 +151,7 @@ async function pause($: EngineInterface, tool: string) {
   if (turn !== t || t.waits.size === 0 || t.pausedSince !== undefined) return
   t.pausedSince = now
   t.timer?.cancel()
+  t.stillTimer?.cancel()
 }
 
 async function resume($: EngineInterface, tool: string) {
@@ -145,7 +177,7 @@ export const register: Register = (on, options) => {
 
     if (turn !== undefined) stop(turn)
     const now = await $.clock.now()
-    turn = { id: e.turnId, startedAt: now, pausedMs: 0, waits: new Set(), agents: 0, steps: 0, output: 0, hasBeeped: false }
+    turn = { id: e.turnId, startedAt: now, pausedMs: 0, waits: new Set(), agents: 0, steps: 0, output: 0, hasBeeped: false, hasRemindedStill: false }
     arm($, now)
 
     return next(e)

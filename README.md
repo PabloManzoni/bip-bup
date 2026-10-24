@@ -13,6 +13,8 @@ Once per request, and only for requests that are really big. Nothing plays in th
 | So many tokens | 20,000 | Tokens Claude *writes* during the request, its subagents included. Output from a cheaper model weighs less (Haiku ×0.25, Sonnet ×0.6). |
 | Big job | 40 | Model steps in the request, roughly one per tool call. |
 
+A request still running after **25 minutes** plays it once more, "🤖 Computing... still going (25 min)", even if it already played for another rule. Time spent waiting on you doesn't count here either, and 0 turns it off.
+
 The toast says which rule fired: "🤖 Computing... taking a while", "agents at work", "so many tokens" or "big job".
 
 The thresholds, the volume and whether the sound plays at all are settings: Claude Code asks for them when you install the mod, and they're rows in its config menu (`/config` in a terminal session) afterwards. **Volume** goes from 0 to 400 % of the recorded level.
