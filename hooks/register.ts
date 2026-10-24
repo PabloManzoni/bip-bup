@@ -17,7 +17,7 @@ const WAITS_ON_PERSON = new Set(['AskUserQuestion', 'ExitPlanMode'])
 
 const SOUND = 'sounds/computing.wav'
 
-type Settings = { longMs: number; agents: number; workTokens: number; sound: boolean }
+type Settings = { longMs: number; agents: number; workTokens: number; sound: boolean; gain: number }
 
 type Turn = {
   id: string
@@ -45,11 +45,15 @@ function readSettings(options: PluginOptions): Settings {
     return Number.isFinite(value) && value > 0 ? value : DEFAULTS[key]
   }
 
+  // Volume is a percent of the recorded level, 0 to 400; the player takes a linear gain of 0 to 4.
+  const volume = Number(options.volume)
+
   return {
     longMs: number('longSeconds') * 1000,
     agents: number('agents'),
     workTokens: number('workTokens'),
     sound: options.sound !== false,
+    gain: Number.isFinite(volume) ? Math.min(Math.max(volume, 0), 400) / 100 : 1,
   }
 }
 
@@ -59,7 +63,7 @@ function beep($: EngineInterface, why: string) {
   turn.timer?.cancel()
   $.ui.toast(`🤖 Computing... ${why}`, { timeoutMs: 8000 })
   if (settings.sound) {
-    $.audio.play({ asset: SOUND }).catch(() => {})
+    $.audio.play({ asset: SOUND }, { gain: settings.gain }).catch(() => {})
   }
 }
 

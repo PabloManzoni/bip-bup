@@ -1,6 +1,6 @@
 # bip-bup 🤖
 
-A Claude Code mod that goes "beep bop boop", like a cartoon computer thinking, when a request turns out bigger than it looked: long, agent-heavy or token-heavy. So you're not caught off guard when something you thought was quick ends up taking half an hour or burning a lot of tokens.
+A Claude Code mod that plays a quick burst of high "bip bup bip" blips, like a cartoon computer thinking, when a request turns out bigger than it looked: long, agent-heavy or token-heavy. So you're not caught off guard when something you thought was quick ends up taking half an hour or burning a lot of tokens.
 
 ## When it plays
 
@@ -14,7 +14,7 @@ Once per request, the first time any of these happens:
 
 The toast says which rule fired: "🤖 Computing... taking a while", "agents at work" or "so many tokens".
 
-The thresholds, and whether the sound plays at all, are settings: Claude Code asks for them when you install the mod, and they're rows in its config menu (`/config` in a terminal session) afterwards.
+The thresholds, the volume and whether the sound plays at all are settings: Claude Code asks for them when you install the mod, and they're rows in its config menu (`/config` in a terminal session) afterwards. The sound is recorded quiet on purpose; **Volume** goes from 0 to 400 % of that.
 
 ## How it measures
 
@@ -48,7 +48,7 @@ In the desktop app, where `/plugin` doesn't run: click **+** next to the prompt 
 ## Development
 
 - `hooks/register.ts` is the whole mod. Validate it with `claude plugin validate .` from the repo root.
-- `scripts/make_sound.py` synthesizes the sound. Tweak the notes, then run `python3 scripts/make_sound.py sounds/computing.wav`.
+- `scripts/make_sound.py` synthesizes the sound: sixteen quick blips at random high pitches and a two-note ding, soft square-wave tones, about 1.5 s. Tweak it, then run `python3 scripts/make_sound.py sounds/computing.wav`.
 - Once the mod has loaded in a session, Claude Code writes its type declarations to `.claude-plugin/types/` and a `tsconfig.json` beside them (both git-ignored). From then on `tsc -p .` type-checks it.
 
 ## License

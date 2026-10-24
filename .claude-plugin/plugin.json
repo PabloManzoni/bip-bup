@@ -1,7 +1,7 @@
 {
   "name": "bip-bup",
-  "version": "0.2.0",
-  "description": "Plays a soft robot 'beep bop boop' when a request turns out long, agent-heavy or token-heavy.",
+  "version": "0.2.1",
+  "description": "Plays a quick, quiet burst of robot blips when a request turns out long, agent-heavy or token-heavy.",
   "author": { "name": "Pablo Manzoni", "url": "https://github.com/PabloManzoni" },
   "homepage": "https://github.com/PabloManzoni/bip-bup",
   "repository": "https://github.com/PabloManzoni/bip-bup",
@@ -31,6 +31,12 @@
       "title": "Play the sound",
       "description": "Play the sound; the toast shows either way",
       "default": true
+    },
+    "volume": {
+      "type": "number",
+      "title": "Volume (%)",
+      "description": "Loudness as a percent of the recorded level, from 0 to 400",
+      "default": 100
     }
   }
 }
