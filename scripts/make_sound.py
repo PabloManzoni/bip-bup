@@ -9,7 +9,7 @@ import sys
 import wave
 
 RATE = 44100
-VOLUME = 0.15
+VOLUME = 0.075
 
 # (frequency in Hz, length in ms): beep, bop, boop. The last one lands lower and longer.
 NOTES = [(659, 130), (523, 130), (392, 190)]

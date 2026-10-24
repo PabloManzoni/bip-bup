@@ -1,6 +1,6 @@
 {
   "name": "bip-bup",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Plays a soft robot 'beep bop boop' when a request turns out long, agent-heavy or token-heavy.",
   "author": {
     "name": "Pablo Manzoni",
