@@ -20,7 +20,7 @@ The thresholds, the volume and whether the sound plays at all are settings: Clau
 
 - **Cache re-reads are left out on purpose.** Every model step re-reads the whole conversation from cache. That cost grows with the *session*, not with the *request*, so counting it makes the alert fire on almost every request once a session is long, and an alert that always fires says nothing. The token rule only counts what the request itself added.
 - **Background subagents left over from an earlier request** keep running after it ends. Their tokens are not charged to the next request.
-- **Waiting on you doesn't count as time**, with one limit: once a permission dialog opens for a tool, the clock stays paused until that tool call ends, because the engine gives no signal for the moment you answer. So a long command that first needed your permission is not counted against the time rule.
+- **Waiting on you doesn't count as time**, with one limit: once a permission dialog opens for a tool, the clock stays paused until that tool call ends, because the engine gives no signal for the moment you answer. So a long command that first needed your permission is not counted against the time rule. And in the desktop app a built-in security plugin answers permission events before any mod sees them, so there only questions and plan approvals pause the clock.
 - The weights are rough. They stand for price ratios, and real prices differ by model and change over time.
 
 The mod itself uses no tokens: it never calls the model and only reads the usage numbers every response already carries.
