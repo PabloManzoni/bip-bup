@@ -1,1 +1,36 @@
-{ "name": "bip-bup", "version": "0.1.3", "description": "Plays a cartoon robot 'computing' sound when a request turns out long or token-heavy." }
+{
+  "name": "bip-bup",
+  "version": "0.2.0",
+  "description": "Plays a soft robot 'beep bop boop' when a request turns out long, agent-heavy or token-heavy.",
+  "author": { "name": "Pablo Manzoni", "url": "https://github.com/PabloManzoni" },
+  "homepage": "https://github.com/PabloManzoni/bip-bup",
+  "repository": "https://github.com/PabloManzoni/bip-bup",
+  "license": "MIT",
+  "keywords": ["sound", "notification", "tokens", "subagents"],
+  "userConfig": {
+    "longSeconds": {
+      "type": "number",
+      "title": "Seconds before 'taking a while'",
+      "description": "Seconds a request may run, not counting time spent waiting on you, before the sound plays",
+      "default": 90
+    },
+    "agents": {
+      "type": "number",
+      "title": "Subagents before 'agents at work'",
+      "description": "Subagents started by one request that play the sound",
+      "default": 2
+    },
+    "workTokens": {
+      "type": "number",
+      "title": "Tokens before 'so many tokens'",
+      "description": "Weighted tokens of new work in one request that play the sound",
+      "default": 75000
+    },
+    "sound": {
+      "type": "boolean",
+      "title": "Play the sound",
+      "description": "Play the sound; the toast shows either way",
+      "default": true
+    }
+  }
+}

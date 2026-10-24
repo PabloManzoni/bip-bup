@@ -1,5 +1,6 @@
 {
   "name": "bip-bup",
   "owner": { "name": "PabloManzoni" },
+  "description": "A soft robot beep when a Claude Code request turns out long, agent-heavy or token-heavy.",
   "plugins": [{ "name": "bip-bup", "source": "./" }]
 }
