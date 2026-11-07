@@ -19,6 +19,28 @@ const MODEL_WEIGHTS: ReadonlyArray<readonly [RegExp, number]> = [
 const WAITS_ON_PERSON = new Set(['AskUserQuestion', 'ExitPlanMode'])
 
 const SOUND = 'sounds/computing.wav'
+// PM Mode's own sound: shorter, quicker, higher notes.
+const PM_SOUND = 'sounds/where-are-we.wav'
+
+// PM Mode asks a fork of the conversation where things stand, so the request
+// itself never sees the question. The toast opens with one of these, at random.
+const PM_QUESTIONS = [
+  'Where are we on this?',
+  'Just circling back… any updates? 👀',
+  'Quick sync: what’s the ETA?',
+  'Per my last message… how’s it going?',
+  'Just checking in! No pressure 🙂',
+  'Is it done yet?',
+  'Can we get a quick status on this?',
+  'Any blockers I should know about?',
+]
+const PM_PROMPT = 'Where are we on this? (A status check from the person who asked, who stepped away from the screen. Do not continue the work.) In at most two short sentences, in the language this conversation is held in: what you are doing right now, and why it is taking long. No preamble, no lists, no markdown.'
+const PM_MAX_CHARS = 280
+
+// `/bip-bup pm on|off` and `/bip-bup sounds on|off`: the switch's word, and the
+// setting it overrides. Kept across sessions in the store; they win over the config menu.
+const SWITCHES = { pm: 'pmMode', sounds: 'sound' } as const
+const COMMAND = 'bip-bup'
 
 type Settings = {
   longMs: number
@@ -27,6 +49,7 @@ type Settings = {
   outputTokens: number
   steps: number
   sound: boolean
+  pmMode: boolean
   gain: number
 }
 
@@ -41,6 +64,9 @@ type Turn = {
   timer?: Timer
   stillTimer?: Timer
   hasRemindedStill: boolean
+  // PM Mode asks once the request has run `longMs`, whatever other rule beeped first.
+  pmTimer?: Timer
+  hasAsked: boolean
   // A rule that fired inside the quiet window, held until the window ends.
   held?: string
   holdTimer?: Timer
@@ -73,6 +99,7 @@ function readSettings(options: PluginOptions): Settings {
     outputTokens: number('outputTokens'),
     steps: number('steps'),
     sound: options.sound !== false,
+    pmMode: options.pmMode !== false,
     gain: Number.isFinite(volume) ? Math.min(Math.max(volume, 0), 400) / 100 : 1,
   }
 }
@@ -86,13 +113,38 @@ function stop(t: Turn) {
   t.timer?.cancel()
   t.holdTimer?.cancel()
   t.stillTimer?.cancel()
+  t.pmTimer?.cancel()
+}
+
+function sound($: EngineInterface, asset: string) {
+  if (settings.sound) {
+    $.audio.play({ asset }, { gain: settings.gain }).catch(() => {})
+  }
 }
 
 function play($: EngineInterface, why: string) {
   $.ui.toast(`🤖 Computing... ${why}`, { timeoutMs: 8000 })
-  if (settings.sound) {
-    $.audio.play({ asset: SOUND }, { gain: settings.gain }).catch(() => {})
+  sound($, SOUND)
+}
+
+// PM Mode: asks a fork of the conversation where things stand and shows the
+// answer in the toast and as a notice in the transcript, which the model never
+// reads. Without an answer (a new session's first request, an API error) it
+// falls back to the plain beep.
+async function ask($: EngineInterface, t: Turn, why: string) {
+  const reply = await $.model.fork({ prompt: PM_PROMPT })
+  if (turn !== t) return
+  if (!reply.isAnswered || reply.text.trim() === '') {
+    play($, why)
+    return
   }
+
+  const question = PM_QUESTIONS[Math.floor(Math.random() * PM_QUESTIONS.length)]
+  const answer = reply.text.trim().replace(/\s+/g, ' ')
+  const text = `🤖 ${question} ${answer.length > PM_MAX_CHARS ? `${answer.slice(0, PM_MAX_CHARS - 1)}…` : answer}`
+  $.ui.toast(text, { timeoutMs: 15_000 })
+  sound($, PM_SOUND)
+  $.session.append({ message: { type: 'system', content: [{ type: 'text', text }] } }).catch(() => {})
 }
 
 function beep($: EngineInterface, t: Turn, why: string) {
@@ -127,7 +179,16 @@ function arm($: EngineInterface, now: number) {
   const t = turn
   if (t === undefined || t.pausedSince !== undefined) return
   const active = activeMs(t, now)
-  if (!t.hasBeeped) {
+  // In PM Mode the time rule asks where things stand in place of the plain beep.
+  if (settings.pmMode && !t.hasAsked) {
+    t.pmTimer?.cancel()
+    t.pmTimer = $.clock.after(Math.max(settings.longMs - active, 0), () => {
+      if (turn !== t) return
+      t.hasAsked = true
+      void ask($, t, 'taking a while')
+    })
+  } else if (!settings.pmMode && !t.hasBeeped) {
+    t.pmTimer?.cancel()
     t.timer?.cancel()
     t.timer = $.clock.after(Math.max(settings.longMs - active, 0), () => void signal($, 'taking a while'))
   }
@@ -136,7 +197,9 @@ function arm($: EngineInterface, now: number) {
     t.stillTimer = $.clock.after(Math.max(settings.stillMs - active, 0), () => {
       if (turn !== t) return
       t.hasRemindedStill = true
-      play($, `still going (${Math.round(settings.stillMs / 60_000)} min)`)
+      const why = `still going (${Math.round(settings.stillMs / 60_000)} min)`
+      if (settings.pmMode) void ask($, t, why)
+      else play($, why)
     })
   }
 }
@@ -152,6 +215,7 @@ async function pause($: EngineInterface, tool: string) {
   t.pausedSince = now
   t.timer?.cancel()
   t.stillTimer?.cancel()
+  t.pmTimer?.cancel()
 }
 
 async function resume($: EngineInterface, tool: string) {
@@ -164,8 +228,49 @@ async function resume($: EngineInterface, tool: string) {
   arm($, now)
 }
 
+async function readSwitches($: EngineInterface) {
+  for (const key of Object.values(SWITCHES)) {
+    const value = await $.store.get(key)
+    if (typeof value === 'boolean') settings[key] = value
+  }
+}
+
+function describe() {
+  const word = (on: boolean) => (on ? 'on' : 'off')
+
+  return `🤖 bip-bup: PM Mode ${word(settings.pmMode)} · Sounds ${word(settings.sound)}. Change them with /${COMMAND} pm on|off and /${COMMAND} sounds on|off.`
+}
+
 export const register: Register = (on, options) => {
   settings = readSettings(options)
+
+  on('session.start', async ($, e, next) => {
+    await readSwitches($)
+    await $.command.register({
+      name: COMMAND,
+      description: 'Turn PM Mode or the sounds on or off',
+      argumentHint: '[pm|sounds] [on|off]',
+      immediate: true,
+    })
+
+    return next(e)
+  })
+
+  on('command.run', { command: COMMAND }, async ($, e) => {
+    const [word = '', state = ''] = (e.args ?? '').trim().toLowerCase().split(/\s+/)
+    if (word === '') return { text: describe() }
+    if (!(word === 'pm' || word === 'sounds') || !(state === 'on' || state === 'off')) {
+      return { text: `🤖 Try /${COMMAND} pm on|off or /${COMMAND} sounds on|off.` }
+    }
+
+    const key = SWITCHES[word]
+    settings[key] = state === 'on'
+    await $.store.set(key, settings[key])
+    // A request running now follows the new PM Mode from here on.
+    if (key === 'pmMode' && turn !== undefined) arm($, await $.clock.now())
+
+    return { text: describe() }
+  })
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId !== undefined) {
@@ -177,7 +282,7 @@ export const register: Register = (on, options) => {
 
     if (turn !== undefined) stop(turn)
     const now = await $.clock.now()
-    turn = { id: e.turnId, startedAt: now, pausedMs: 0, waits: new Set(), agents: 0, steps: 0, output: 0, hasBeeped: false, hasRemindedStill: false }
+    turn = { id: e.turnId, startedAt: now, pausedMs: 0, waits: new Set(), agents: 0, steps: 0, output: 0, hasBeeped: false, hasRemindedStill: false, hasAsked: false }
     arm($, now)
 
     return next(e)

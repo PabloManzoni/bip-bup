@@ -1,7 +1,7 @@
 {
   "name": "bip-bup",
-  "version": "0.3.2",
-  "description": "Plays a soft robot 'beep bop boop' when a request turns out long, agent-heavy or token-heavy.",
+  "version": "0.4.0",
+  "description": "Plays a soft robot \"beep bop boop\" when a request turns out long, agent-heavy or token-heavy; in PM Mode it asks Claude where things stand.",
   "author": {
     "name": "Pablo Manzoni",
     "url": "https://github.com/PabloManzoni"
@@ -16,6 +16,18 @@
     "subagents"
   ],
   "userConfig": {
+    "sound": {
+      "type": "boolean",
+      "title": "Sounds",
+      "description": "Play the sounds; the toast shows either way",
+      "default": true
+    },
+    "pmMode": {
+      "type": "boolean",
+      "title": "PM Mode",
+      "description": "When a request is taking a while, ask Claude \"Where are we on this?\" and show its answer in the toast. Uses a few tokens each time",
+      "default": true
+    },
     "longSeconds": {
       "type": "number",
       "title": "Seconds before 'taking a while'",
@@ -45,12 +57,6 @@
       "title": "Steps before 'big job'",
       "description": "Model steps (roughly, tool calls) in one request that play the sound",
       "default": 40
-    },
-    "sound": {
-      "type": "boolean",
-      "title": "Play the sound",
-      "description": "Play the sound; the toast shows either way",
-      "default": true
     },
     "volume": {
       "type": "number",
